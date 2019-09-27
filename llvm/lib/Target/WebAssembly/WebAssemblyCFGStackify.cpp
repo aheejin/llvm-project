@@ -1374,5 +1374,12 @@ bool WebAssemblyCFGStackify::runOnMachineFunction(MachineFunction &MF) {
     appendEndToFunction(MF, TII);
 
   MF.getInfo<WebAssemblyFunctionInfo>()->setCFGStackified();
+
+  // Marker instructions use/def VALUE_STACK. Add VALUE_STACK to the live-in
+  // sets everywhere so that it never looks like a use-before-def.
+  MF.getRegInfo().addLiveIn(WebAssembly::VALUE_STACK);
+  for (MachineBasicBlock &MBB : MF)
+    MBB.addLiveIn(WebAssembly::VALUE_STACK);
+
   return true;
 }

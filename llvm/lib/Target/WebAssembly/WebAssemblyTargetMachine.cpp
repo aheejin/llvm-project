@@ -440,6 +440,13 @@ void WebAssemblyPassConfig::addPreEmitPass() {
   // colored, and numbered with the rest of the registers.
   addPass(createWebAssemblyReplacePhysRegs());
 
+  // Sort the blocks of the CFG into topological order, a prerequisite for
+  // BLOCK and LOOP markers.
+  addPass(createWebAssemblyCFGSort());
+
+  // Insert BLOCK and LOOP markers.
+  addPass(createWebAssemblyCFGStackify());
+
   // Preparations and optimizations related to register stackification.
   if (getOptLevel() != CodeGenOpt::None) {
     // LiveIntervals isn't commonly run this late. Re-establish preconditions.
@@ -463,13 +470,6 @@ void WebAssemblyPassConfig::addPreEmitPass() {
     // that become stackified.
     addPass(createWebAssemblyRegColoring());
   }
-
-  // Sort the blocks of the CFG into topological order, a prerequisite for
-  // BLOCK and LOOP markers.
-  addPass(createWebAssemblyCFGSort());
-
-  // Insert BLOCK and LOOP markers.
-  addPass(createWebAssemblyCFGStackify());
 
   // Insert explicit local.get and local.set operators.
   addPass(createWebAssemblyExplicitLocals());

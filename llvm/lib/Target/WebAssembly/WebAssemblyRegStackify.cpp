@@ -897,14 +897,6 @@ bool WebAssemblyRegStackify::runOnMachineFunction(MachineFunction &MF) {
     }
   }
 
-  // If we used VALUE_STACK anywhere, add it to the live-in sets everywhere so
-  // that it never looks like a use-before-def.
-  if (Changed) {
-    MF.getRegInfo().addLiveIn(WebAssembly::VALUE_STACK);
-    for (MachineBasicBlock &MBB : MF)
-      MBB.addLiveIn(WebAssembly::VALUE_STACK);
-  }
-
 #ifndef NDEBUG
   // Verify that pushes and pops are performed in LIFO order.
   SmallVector<unsigned, 0> Stack;
