@@ -20,6 +20,31 @@ using namespace llvm;
 
 WebAssemblyFunctionInfo::~WebAssemblyFunctionInfo() = default; // anchor.
 
+void WebAssemblyFunctionInfo::unstackifyAllVRegDefs(MachineBasicBlock &MBB) {
+  // Remove TEE_* instructions because tee instruction's first def is assumed to
+  // be stackified.
+  MachineRegisterInfo &MRI = MBB.getParent()->getRegInfo();
+  for (auto I = MBB.begin(); I != MBB.end();) {
+    MachineInstr &MI = *I;
+    I++;
+    if (WebAssembly::isTee(MI.getOpcode())) {
+      Register TeeReg = MI.getOperand(0).getReg();
+      Register Reg = MI.getOperand(1).getReg();
+      Register DefReg = MI.getOperand(2).getReg();
+      MRI.replaceRegWith(TeeReg, DefReg);
+      MRI.replaceRegWith(Reg, DefReg);
+      unstackifyVReg(TeeReg);
+      unstackifyVReg(DefReg);
+      MI.eraseFromParent();
+    }
+  }
+
+  // Unstackify all other defs.
+  for (auto &MI : MBB)
+    for (auto &MO : MI.defs())
+      unstackifyVReg(MO.getReg());
+}
+
 void WebAssemblyFunctionInfo::initWARegs() {
   assert(WARegs.empty());
   unsigned Reg = UnusedReg;

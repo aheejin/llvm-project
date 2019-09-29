@@ -101,12 +101,18 @@ public:
       VRegStackified.resize(I + 1);
     VRegStackified.set(I);
   }
+  void unstackifyVReg(unsigned VReg) {
+    auto I = Register::virtReg2Index(VReg);
+    if (I < VRegStackified.size())
+      VRegStackified.reset(I);
+  }
   bool isVRegStackified(unsigned VReg) const {
     auto I = Register::virtReg2Index(VReg);
     if (I >= VRegStackified.size())
       return false;
     return VRegStackified.test(I);
   }
+  void unstackifyAllVRegDefs(MachineBasicBlock &MBB);
 
   void initWARegs();
   void setWAReg(unsigned VReg, unsigned WAReg) {

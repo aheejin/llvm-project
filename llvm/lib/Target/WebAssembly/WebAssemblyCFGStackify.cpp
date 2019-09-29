@@ -696,6 +696,7 @@ void WebAssemblyCFGStackify::removeUnnecessaryInstrs(MachineFunction &MF) {
 
 bool WebAssemblyCFGStackify::fixUnwindMismatches(MachineFunction &MF) {
   const auto &TII = *MF.getSubtarget<WebAssemblySubtarget>().getInstrInfo();
+  auto &MFI = *MF.getInfo<WebAssemblyFunctionInfo>();
   MachineRegisterInfo &MRI = MF.getRegInfo();
 
   // Linearizing the control flow by placing TRY / END_TRY markers can create
@@ -1006,7 +1007,12 @@ bool WebAssemblyCFGStackify::fixUnwindMismatches(MachineFunction &MF) {
     // Hoist up the existing 'end_try'.
     BrDest->insert(BrDest->end(), EndTry->removeFromParent());
     // Take out the handler body from EH pad to the new branch destination BB.
-    BrDest->splice(BrDest->end(), EHPad, SplitPos, EHPad->end());
+    if (SplitPos != EHPad->end()) {
+      BrDest->splice(BrDest->end(), EHPad, SplitPos, EHPad->end());
+      // Now we have splitted this BB, so unstackify all defs within this BB.
+      // TODO Can we re-stackify this BB?
+      MFI.unstackifyAllVRegDefs(*EHPad);
+    }
     // Fix predecessor-successor relationship.
     BrDest->transferSuccessors(EHPad);
     EHPad->addSuccessor(BrDest);
@@ -1120,8 +1126,13 @@ bool WebAssemblyCFGStackify::fixUnwindMismatches(MachineFunction &MF) {
                   TII.get(WebAssembly::END_TRY));
       // In case MBB has more instructions after the try range, move them to the
       // new nested continuation BB.
-      NestedCont->splice(NestedCont->end(), MBB,
-                         std::next(RangeEnd->getIterator()), MBB->end());
+      if (std::next(RangeEnd->getIterator()) != MBB->end()) {
+        NestedCont->splice(NestedCont->end(), MBB,
+                           std::next(RangeEnd->getIterator()), MBB->end());
+        // Now we have splitted this BB, so unstackify all defs within this BB.
+        // TODO Can we re-stackify this BB?
+        MFI.unstackifyAllVRegDefs(*MBB);
+      }
       registerTryScope(NestedTry, NestedEndTry, NestedEHPad);
 
       // Fix predecessor-successor relationship.
