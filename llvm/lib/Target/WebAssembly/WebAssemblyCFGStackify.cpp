@@ -41,6 +41,8 @@ class WebAssemblyCFGStackify final : public MachineFunctionPass {
   StringRef getPassName() const override { return "WebAssembly CFG Stackify"; }
 
   void getAnalysisUsage(AnalysisUsage &AU) const override {
+    AU.addRequired<AAResultsWrapperPass>();
+    AU.addRequired<LiveIntervals>();
     AU.addRequired<MachineDominatorTree>();
     AU.addRequired<MachineLoopInfo>();
     AU.addRequired<WebAssemblyExceptionInfo>();

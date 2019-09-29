@@ -285,7 +285,7 @@ static MachineInstr *getVRegDef(unsigned Reg, const MachineInstr *Insert,
 // generalization of MachineRegisterInfo::hasOneUse that uses LiveIntervals
 // to handle complex cases.
 static bool hasOneUse(unsigned Reg, MachineInstr *Def, MachineRegisterInfo &MRI,
-                      MachineDominatorTree &MDT, LiveIntervals &LIS) {
+                      const MachineDominatorTree &MDT, LiveIntervals &LIS) {
   // Most registers are in SSA form here so we try a quick MRI query first.
   if (MRI.hasOneUse(Reg))
     return true;
@@ -765,173 +765,178 @@ public:
 };
 } // end anonymous namespace
 
-bool WebAssemblyRegStackify::runOnMachineFunction(MachineFunction &MF) {
-  LLVM_DEBUG(dbgs() << "********** Register Stackifying **********\n"
-                       "********** Function: "
-                    << MF.getName() << '\n');
-
-  bool Changed = false;
+bool WebAssembly::stackifyRegs(MachineBasicBlock &MBB,
+                               const MachineDominatorTree &MDT,
+                               AliasAnalysis &AA, LiveIntervals &LIS) {
+  MachineFunction &MF = *MBB.getParent();
   MachineRegisterInfo &MRI = MF.getRegInfo();
   WebAssemblyFunctionInfo &MFI = *MF.getInfo<WebAssemblyFunctionInfo>();
   const auto *TII = MF.getSubtarget<WebAssemblySubtarget>().getInstrInfo();
   const auto *TRI = MF.getSubtarget<WebAssemblySubtarget>().getRegisterInfo();
-  AliasAnalysis &AA = getAnalysis<AAResultsWrapperPass>().getAAResults();
-  auto &MDT = getAnalysis<MachineDominatorTree>();
-  auto &LIS = getAnalysis<LiveIntervals>();
+  bool Changed = false;
 
-  // Walk the instructions from the bottom up. Currently we don't look past
-  // block boundaries, and the blocks aren't ordered so the block visitation
-  // order isn't significant, but we may want to change this in the future.
-  for (MachineBasicBlock &MBB : MF) {
-    // Don't use a range-based for loop, because we modify the list as we're
-    // iterating over it and the end iterator may change.
-    for (auto MII = MBB.rbegin(); MII != MBB.rend(); ++MII) {
-      MachineInstr *Insert = &*MII;
-      // Don't nest anything inside an inline asm, because we don't have
-      // constraints for $push inputs.
-      if (Insert->isInlineAsm())
+  // Don't use a range-based for loop, because we modify the list as we're
+  // iterating over it and the end iterator may change.
+  for (auto MII = MBB.rbegin(); MII != MBB.rend(); ++MII) {
+    MachineInstr *Insert = &*MII;
+    // Don't nest anything inside an inline asm, because we don't have
+    // constraints for $push inputs.
+    if (Insert->isInlineAsm())
+      continue;
+
+    // Ignore debugging intrinsics.
+    if (Insert->isDebugValue())
+      continue;
+
+    // Iterate through the inputs in reverse order, since we'll be pulling
+    // operands off the stack in LIFO order.
+    CommutingState Commuting;
+    TreeWalkerState TreeWalker(Insert);
+    while (!TreeWalker.done()) {
+      MachineOperand &Op = TreeWalker.pop();
+
+      // We're only interested in explicit virtual register operands.
+      if (!Op.isReg())
         continue;
 
-      // Ignore debugging intrinsics.
-      if (Insert->isDebugValue())
+      Register Reg = Op.getReg();
+      assert(Op.isUse() && "explicit_uses() should only iterate over uses");
+      assert(!Op.isImplicit() &&
+             "explicit_uses() should only iterate over explicit operands");
+      if (Register::isPhysicalRegister(Reg))
         continue;
 
-      // Iterate through the inputs in reverse order, since we'll be pulling
-      // operands off the stack in LIFO order.
-      CommutingState Commuting;
-      TreeWalkerState TreeWalker(Insert);
-      while (!TreeWalker.done()) {
-        MachineOperand &Op = TreeWalker.pop();
+      // Identify the definition for this register at this point.
+      MachineInstr *Def = getVRegDef(Reg, Insert, MRI, LIS);
+      if (!Def)
+        continue;
 
-        // We're only interested in explicit virtual register operands.
-        if (!Op.isReg())
-          continue;
+      // Don't nest an INLINE_ASM def into anything, because we don't have
+      // constraints for $pop outputs.
+      if (Def->isInlineAsm())
+        continue;
 
-        Register Reg = Op.getReg();
-        assert(Op.isUse() && "explicit_uses() should only iterate over uses");
-        assert(!Op.isImplicit() &&
-               "explicit_uses() should only iterate over explicit operands");
-        if (Register::isPhysicalRegister(Reg))
-          continue;
+      // Argument instructions represent live-in registers and not real
+      // instructions.
+      if (WebAssembly::isArgument(Def->getOpcode()))
+        continue;
 
-        // Identify the definition for this register at this point.
-        MachineInstr *Def = getVRegDef(Reg, Insert, MRI, LIS);
-        if (!Def)
-          continue;
+      // Currently catch's return value register cannot be stackified, because
+      // the wasm LLVM backend currently does not support live-in values
+      // entering blocks, which is a part of multi-value proposal.
+      //
+      // Once we support live-in values of wasm blocks, this can be:
+      // catch                           ; push exnref value onto stack
+      // block exnref -> i32
+      // br_on_exn $__cpp_exception      ; pop the exnref value
+      // end_block
+      //
+      // But because we don't support it yet, the catch instruction's dst
+      // register should be assigned to a local to be propagated across
+      // 'block' boundary now.
+      //
+      // TODO Fix this once we support the multi-value proposal.
+      if (Def->getOpcode() == WebAssembly::CATCH)
+        continue;
 
-        // Don't nest an INLINE_ASM def into anything, because we don't have
-        // constraints for $pop outputs.
-        if (Def->isInlineAsm())
-          continue;
-
-        // Argument instructions represent live-in registers and not real
-        // instructions.
-        if (WebAssembly::isArgument(Def->getOpcode()))
-          continue;
-
-        // Currently catch's return value register cannot be stackified, because
-        // the wasm LLVM backend currently does not support live-in values
-        // entering blocks, which is a part of multi-value proposal.
-        //
-        // Once we support live-in values of wasm blocks, this can be:
-        // catch                           ; push exnref value onto stack
-        // block exnref -> i32
-        // br_on_exn $__cpp_exception      ; pop the exnref value
-        // end_block
-        //
-        // But because we don't support it yet, the catch instruction's dst
-        // register should be assigned to a local to be propagated across
-        // 'block' boundary now.
-        //
-        // TODO Fix this once we support the multi-value proposal.
-        if (Def->getOpcode() == WebAssembly::CATCH)
-          continue;
-
-        // Decide which strategy to take. Prefer to move a single-use value
-        // over cloning it, and prefer cloning over introducing a tee.
-        // For moving, we require the def to be in the same block as the use;
-        // this makes things simpler (LiveIntervals' handleMove function only
-        // supports intra-block moves) and it's MachineSink's job to catch all
-        // the sinking opportunities anyway.
-        bool SameBlock = Def->getParent() == &MBB;
-        bool CanMove = SameBlock && isSafeToMove(Def, Insert, AA, MRI) &&
-                       !TreeWalker.isOnStack(Reg);
-        if (CanMove && hasOneUse(Reg, Def, MRI, MDT, LIS)) {
-          Insert = moveForSingleUse(Reg, Op, Def, MBB, Insert, LIS, MFI, MRI);
-        } else if (shouldRematerialize(*Def, AA, TII)) {
-          Insert =
-              rematerializeCheapDef(Reg, Op, *Def, MBB, Insert->getIterator(),
-                                    LIS, MFI, MRI, TII, TRI);
-        } else if (CanMove &&
-                   oneUseDominatesOtherUses(Reg, Op, MBB, MRI, MDT, LIS, MFI)) {
-          Insert = moveAndTeeForMultiUse(Reg, Op, Def, MBB, Insert, LIS, MFI,
-                                         MRI, TII);
-        } else {
-          // We failed to stackify the operand. If the problem was ordering
-          // constraints, Commuting may be able to help.
-          if (!CanMove && SameBlock)
-            Commuting.maybeCommute(Insert, TreeWalker, TII);
-          // Proceed to the next operand.
-          continue;
-        }
-
-        // If the instruction we just stackified is an IMPLICIT_DEF, convert it
-        // to a constant 0 so that the def is explicit, and the push/pop
-        // correspondence is maintained.
-        if (Insert->getOpcode() == TargetOpcode::IMPLICIT_DEF)
-          convertImplicitDefToConstZero(Insert, MRI, TII, MF, LIS);
-
-        // We stackified an operand. Add the defining instruction's operands to
-        // the worklist stack now to continue to build an ever deeper tree.
-        Commuting.reset();
-        TreeWalker.pushOperands(Insert);
+      // Decide which strategy to take. Prefer to move a single-use value
+      // over cloning it, and prefer cloning over introducing a tee.
+      // For moving, we require the def to be in the same block as the use;
+      // this makes things simpler (LiveIntervals' handleMove function only
+      // supports intra-block moves) and it's MachineSink's job to catch all
+      // the sinking opportunities anyway.
+      bool SameBlock = Def->getParent() == &MBB;
+      bool CanMove = SameBlock && isSafeToMove(Def, Insert, AA, MRI) &&
+                     !TreeWalker.isOnStack(Reg);
+      if (CanMove && hasOneUse(Reg, Def, MRI, MDT, LIS)) {
+        Insert = moveForSingleUse(Reg, Op, Def, MBB, Insert, LIS, MFI, MRI);
+      } else if (shouldRematerialize(*Def, AA, TII)) {
+        Insert = rematerializeCheapDef(
+            Reg, Op, *Def, MBB, Insert->getIterator(), LIS, MFI, MRI, TII, TRI);
+      } else if (CanMove &&
+                 oneUseDominatesOtherUses(Reg, Op, MBB, MRI, MDT, LIS, MFI)) {
+        Insert = moveAndTeeForMultiUse(Reg, Op, Def, MBB, Insert, LIS, MFI, MRI,
+                                       TII);
+      } else {
+        // We failed to stackify the operand. If the problem was ordering
+        // constraints, Commuting may be able to help.
+        if (!CanMove && SameBlock)
+          Commuting.maybeCommute(Insert, TreeWalker, TII);
+        // Proceed to the next operand.
+        continue;
       }
 
-      // If we stackified any operands, skip over the tree to start looking for
-      // the next instruction we can build a tree on.
-      if (Insert != &*MII) {
-        imposeStackOrdering(&*MII);
-        MII = MachineBasicBlock::iterator(Insert).getReverse();
-        Changed = true;
-      }
+      // If the instruction we just stackified is an IMPLICIT_DEF, convert it
+      // to a constant 0 so that the def is explicit, and the push/pop
+      // correspondence is maintained.
+      if (Insert->getOpcode() == TargetOpcode::IMPLICIT_DEF)
+        convertImplicitDefToConstZero(Insert, MRI, TII, MF, LIS);
+
+      // We stackified an operand. Add the defining instruction's operands to
+      // the worklist stack now to continue to build an ever deeper tree.
+      Commuting.reset();
+      TreeWalker.pushOperands(Insert);
+    }
+
+    // If we stackified any operands, skip over the tree to start looking for
+    // the next instruction we can build a tree on.
+    if (Insert != &*MII) {
+      imposeStackOrdering(&*MII);
+      MII = MachineBasicBlock::iterator(Insert).getReverse();
+      Changed = true;
     }
   }
 
-  // If we used VALUE_STACK anywhere, add it to the live-in sets everywhere so
+  // If we used VALUE_STACK anywhere, add it to the live-in sets of the MBB so
   // that it never looks like a use-before-def.
-  if (Changed) {
-    MF.getRegInfo().addLiveIn(WebAssembly::VALUE_STACK);
-    for (MachineBasicBlock &MBB : MF)
-      MBB.addLiveIn(WebAssembly::VALUE_STACK);
-  }
+  if (Changed)
+    MBB.addLiveIn(WebAssembly::VALUE_STACK);
 
 #ifndef NDEBUG
   // Verify that pushes and pops are performed in LIFO order.
   SmallVector<unsigned, 0> Stack;
-  for (MachineBasicBlock &MBB : MF) {
-    for (MachineInstr &MI : MBB) {
-      if (MI.isDebugInstr())
+  for (MachineInstr &MI : MBB) {
+    if (MI.isDebugInstr())
+      continue;
+    for (MachineOperand &MO : reverse(MI.explicit_operands())) {
+      if (!MO.isReg())
         continue;
-      for (MachineOperand &MO : reverse(MI.explicit_operands())) {
-        if (!MO.isReg())
-          continue;
-        Register Reg = MO.getReg();
+      Register Reg = MO.getReg();
 
-        if (MFI.isVRegStackified(Reg)) {
-          if (MO.isDef())
-            Stack.push_back(Reg);
-          else
-            assert(Stack.pop_back_val() == Reg &&
-                   "Register stack pop should be paired with a push");
-        }
+      if (MFI.isVRegStackified(Reg)) {
+        if (MO.isDef())
+          Stack.push_back(Reg);
+        else
+          assert(Stack.pop_back_val() == Reg &&
+                 "Register stack pop should be paired with a push");
       }
     }
-    // TODO: Generalize this code to support keeping values on the stack across
-    // basic block boundaries.
-    assert(Stack.empty() &&
-           "Register stack pushes and pops should be balanced");
   }
+  assert(Stack.empty() && "Register stack pushes and pops should be balanced");
 #endif
+
+  return Changed;
+}
+
+bool WebAssemblyRegStackify::runOnMachineFunction(MachineFunction &MF) {
+  LLVM_DEBUG(dbgs() << "********** Register Stackifying **********\n"
+                       "********** Function: "
+                    << MF.getName() << '\n');
+  AliasAnalysis &AA = getAnalysis<AAResultsWrapperPass>().getAAResults();
+  const auto &MDT = getAnalysis<MachineDominatorTree>();
+  auto &LIS = getAnalysis<LiveIntervals>();
+
+  bool Changed = false;
+
+  // Walk the instructions from the bottom up. Currently we don't look past
+  // block boundaries, and the blocks aren't ordered so the block visitation
+  // order isn't significant, but we may want to change this in the future.
+  for (MachineBasicBlock &MBB : MF)
+    Changed |= WebAssembly::stackifyRegs(MBB, MDT, AA, LIS);
+
+  // If we used VALUE_STACK anywhere, add it to the live-in sets.
+  if (Changed)
+    MF.getRegInfo().addLiveIn(WebAssembly::VALUE_STACK);
 
   return Changed;
 }

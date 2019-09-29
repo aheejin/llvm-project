@@ -19,6 +19,8 @@
 
 namespace llvm {
 
+class LiveIntervals;
+class MachineDominatorTree;
 class WebAssemblyFunctionInfo;
 
 namespace WebAssembly {
@@ -43,6 +45,9 @@ template <typename T> MachineBasicBlock *getBottom(const T *Unit) {
       Bottom = MBB;
   return Bottom;
 }
+
+bool stackifyRegs(MachineBasicBlock &MBB, const MachineDominatorTree &MDT,
+                  AliasAnalysis &AA, LiveIntervals &LIS);
 
 } // end namespace WebAssembly
 
