@@ -209,11 +209,20 @@ namespace {
 struct CompareBlockNumbers {
   bool operator()(const MachineBasicBlock *A,
                   const MachineBasicBlock *B) const {
+    /*
+    errs() << "\n\n-- CompareBlockNumbers:\n";
+    errs() << "  " << A->getName() << "\n";
+    errs() << "  " << B->getName() << "\n\n";
+    */
     if (!WasmDisableEHPadSort) {
       if (A->isEHPad() && !B->isEHPad())
         return false;
       if (!A->isEHPad() && B->isEHPad())
         return true;
+      if (A->hasEHPadSuccessor() && !B->hasEHPadSuccessor())
+        return true;
+      if (!A->hasEHPadSuccessor() && B->hasEHPadSuccessor())
+        return false;
     }
 
     return A->getNumber() > B->getNumber();
@@ -223,11 +232,20 @@ struct CompareBlockNumbers {
 struct CompareBlockNumbersBackwards {
   bool operator()(const MachineBasicBlock *A,
                   const MachineBasicBlock *B) const {
+    /*
+    errs() << "\n\n-- CompareBlockNumbersBackwards:\n";
+    errs() << "  " << A->getName() << "\n";
+    errs() << "  " << B->getName() << "\n\n";
+    */
     if (!WasmDisableEHPadSort) {
       if (A->isEHPad() && !B->isEHPad())
         return false;
       if (!A->isEHPad() && B->isEHPad())
         return true;
+      if (A->hasEHPadSuccessor() && !B->hasEHPadSuccessor())
+        return true;
+      if (!A->hasEHPadSuccessor() && B->hasEHPadSuccessor())
+        return false;
     }
 
     return A->getNumber() < B->getNumber();
@@ -289,7 +307,9 @@ static void sortBlocks(MachineFunction &MF, const MachineLoopInfo &MLI,
 
   RegionInfo RI(MLI, WEI);
   SmallVector<Entry, 4> Entries;
+  errs() << "\n";
   for (MachineBasicBlock *MBB = &MF.front();;) {
+    errs() << "\nSort: MBB = " << MBB->getName() << "\n";
     const Region *R = RI.getRegionFor(MBB);
     if (R) {
       // If MBB is a region header, add it to the active region list. We can't
@@ -302,8 +322,10 @@ static void sortBlocks(MachineFunction &MF, const MachineLoopInfo &MLI,
       // any blocks deferred because the header didn't dominate them.
       for (Entry &E : Entries)
         if (E.TheRegion->contains(MBB) && --E.NumBlocksLeft == 0)
-          for (auto DeferredBlock : E.Deferred)
-            Ready.push(DeferredBlock);
+          for (auto DeferredBlock : E.Deferred) {
+            Preferred.push(DeferredBlock);
+            errs() << "  Preferred.push = " << DeferredBlock->getName() << "\n";
+          }
       while (!Entries.empty() && Entries.back().NumBlocksLeft == 0)
         Entries.pop_back();
     }
@@ -314,14 +336,18 @@ static void sortBlocks(MachineFunction &MF, const MachineLoopInfo &MLI,
         if (SuccL->getHeader() == Succ && SuccL->contains(MBB))
           continue;
       // Decrement the predecessor count. If it's now zero, it's ready.
-      if (--NumPredsLeft[Succ->getNumber()] == 0)
+      if (--NumPredsLeft[Succ->getNumber()] == 0) {
         Preferred.push(Succ);
+        errs() << "  Preferred.push = " << Succ->getName() << "\n";
+      }
     }
     // Determine the block to follow MBB. First try to find a preferred block,
     // to preserve the original block order when possible.
     MachineBasicBlock *Next = nullptr;
     while (!Preferred.empty()) {
+      errs() << "Preferred.size = " << Preferred.size() << "\n";
       Next = Preferred.top();
+      errs() << "Preferred.pop = " << Next->getName() << "\n";
       Preferred.pop();
       // If X isn't dominated by the top active region header, defer it until
       // that region is done.
@@ -331,6 +357,7 @@ static void sortBlocks(MachineFunction &MF, const MachineLoopInfo &MLI,
         Next = nullptr;
         continue;
       }
+      /*
       // If Next was originally ordered before MBB, and it isn't because it was
       // loop-rotated above the header, it's not preferred.
       if (Next->getNumber() < MBB->getNumber() &&
@@ -338,9 +365,11 @@ static void sortBlocks(MachineFunction &MF, const MachineLoopInfo &MLI,
           (!R || !R->contains(Next) ||
            R->getHeader()->getNumber() < Next->getNumber())) {
         Ready.push(Next);
+        errs() << "Ready.push = " << Next->getName() << "\n";
         Next = nullptr;
         continue;
       }
+      */
       break;
     }
     // If we didn't find a suitable block in the Preferred list, check the
@@ -354,6 +383,7 @@ static void sortBlocks(MachineFunction &MF, const MachineLoopInfo &MLI,
       for (;;) {
         Next = Ready.top();
         Ready.pop();
+        errs() << "Ready.pop = " << Next->getName() << "\n";
         // If Next isn't dominated by the top active region header, defer it
         // until that region is done.
         if (!Entries.empty() &&

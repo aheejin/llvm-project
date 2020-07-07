@@ -466,6 +466,14 @@ void WebAssemblyCFGStackify::placeTryMarker(MachineBasicBlock &MBB) {
   if (!Header)
     return;
 
+  errs() << "\n\n-- placeTryMarker: " << MBB.getNumber() << "." << MBB.getName()
+         << " predecessors:\n";
+  for (auto *Pred : MBB.predecessors())
+    errs() << "  " << Pred->getNumber() << "." << Pred->getName() << "\n";
+  errs() << "\n";
+  errs() << "  Dom = " << Header->getNumber() << "." << Header->getName()
+         << "\n\n";
+
   // If this try is at the bottom of the function, insert a dummy block at the
   // end.
   WebAssemblyException *WE = WEI.getExceptionFor(&MBB);
@@ -496,6 +504,8 @@ void WebAssemblyCFGStackify::placeTryMarker(MachineBasicBlock &MBB) {
       }
     }
   }
+  errs() << "  Header = " << Header->getNumber() << "." << Header->getName()
+         << "\n\n";
 
   // Decide where in Header to put the TRY.
 
@@ -1050,6 +1060,33 @@ bool WebAssemblyCFGStackify::fixUnwindMismatches(MachineFunction &MF) {
   // We don't have any unwind destination mismatches to resolve.
   if (UnwindDestToTryRanges.empty())
     return false;
+
+  errs() << "\n\n-- Mismatch Function: " << MF.getName() << "\n\n";
+  for (auto &P : UnwindDestToTryRanges) {
+    MachineBasicBlock *EHPad = P.first;
+    if (EHPad)
+      errs() << "EHPad: " << EHPad->getNumber() << "." << EHPad->getName()
+             << "\n";
+    else
+      errs() << "EHPad: caller\n";
+    auto &TryRanges = P.second;
+    for (auto Range : TryRanges) {
+      MachineInstr *RangeBegin = nullptr, *RangeEnd = nullptr;
+      std::tie(RangeBegin, RangeEnd) = Range;
+      auto *BB = RangeBegin->getParent();
+      if (RangeBegin == RangeEnd)
+        errs() << "  Call  = " << BB->getNumber() << "." << BB->getName()
+               << "\n  " << *RangeBegin << "\n";
+      else {
+        errs() << "  Begin = " << BB->getNumber() << "." << BB->getName()
+               << "\n  " << *RangeBegin << "\n";
+        errs() << "  End   = " << BB->getNumber() << "." << BB->getName()
+               << "\n  " << *RangeEnd << "\n";
+      }
+    }
+    errs() << "\n";
+  }
+  return false;
 
   // If we found instructions that should unwind to the caller but currently
   // have incorrect unwind destination, we create an appendix block at the end
