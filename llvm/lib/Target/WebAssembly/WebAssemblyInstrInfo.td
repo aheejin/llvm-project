@@ -244,7 +244,6 @@ defm "": ARGUMENT<I32, i32>;
 defm "": ARGUMENT<I64, i64>;
 defm "": ARGUMENT<F32, f32>;
 defm "": ARGUMENT<F64, f64>;
-defm "": ARGUMENT<EXNREF, exnref>;
 defm "": ARGUMENT<FUNCREF, funcref>;
 defm "": ARGUMENT<EXTERNREF, externref>;
 
@@ -316,7 +315,6 @@ defm "" : LOCAL<I64>;
 defm "" : LOCAL<F32>;
 defm "" : LOCAL<F64>;
 defm "" : LOCAL<V128>, Requires<[HasSIMD128]>;
-defm "" : LOCAL<EXNREF>, Requires<[HasExceptionHandling]>;
 defm "" : LOCAL<FUNCREF>, Requires<[HasReferenceTypes]>;
 defm "" : LOCAL<EXTERNREF>, Requires<[HasReferenceTypes]>;
 
