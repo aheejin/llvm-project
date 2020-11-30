@@ -463,14 +463,6 @@ void WebAssemblyAsmPrinter::emitInstruction(const MachineInstr *MI) {
     // This is a compiler barrier that prevents instruction reordering during
     // backend compilation, and should not be emitted.
     break;
-  case WebAssembly::EXTRACT_EXCEPTION_I32:
-  case WebAssembly::EXTRACT_EXCEPTION_I32_S:
-    // These are pseudo instructions that simulates popping values from stack.
-    // We print these only when we have -wasm-keep-registers on for assembly
-    // readability.
-    if (!WasmKeepRegisters)
-      break;
-    LLVM_FALLTHROUGH;
   default: {
     WebAssemblyMCInstLower MCInstLowering(OutContext, *this);
     MCInst TmpInst;

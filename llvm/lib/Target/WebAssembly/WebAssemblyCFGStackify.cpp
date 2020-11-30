@@ -251,11 +251,13 @@ void WebAssemblyCFGStackify::placeBlockMarker(MachineBasicBlock &MBB) {
       Header = Header ? MDT.findNearestCommonDominator(Header, Pred) : Pred;
       if (explicitlyBranchesTo(Pred, &MBB)) {
         IsBranchedTo = true;
+        /* FIXME aheejin
         if (Pred->getFirstTerminator()->getOpcode() == WebAssembly::BR_ON_EXN) {
           IsBrOnExn = true;
           assert(!BrOnExn && "There should be only one br_on_exn per block");
           BrOnExn = &*Pred->getFirstTerminator();
         }
+        */
       }
     }
   }

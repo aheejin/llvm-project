@@ -165,6 +165,7 @@ bool WebAssemblyLateEHPrepare::addCatches(MachineFunction &MF) {
 }
 
 bool WebAssemblyLateEHPrepare::replaceFuncletReturns(MachineFunction &MF) {
+  /*
   bool Changed = false;
   const auto &TII = *MF.getSubtarget<WebAssemblySubtarget>().getInstrInfo();
 
@@ -187,6 +188,7 @@ bool WebAssemblyLateEHPrepare::replaceFuncletReturns(MachineFunction &MF) {
     }
     case WebAssembly::CLEANUPRET:
     case WebAssembly::RETHROW_IN_CATCH: {
+      // FIXME aheejin
       // Replace a cleanupret/rethrow_in_catch with a rethrow
       auto *EHPad = getMatchingEHPad(TI);
       auto CatchPos = EHPad->begin();
@@ -203,6 +205,8 @@ bool WebAssemblyLateEHPrepare::replaceFuncletReturns(MachineFunction &MF) {
     }
   }
   return Changed;
+  */
+  return false;
 }
 
 bool WebAssemblyLateEHPrepare::removeUnnecessaryUnreachables(
@@ -257,6 +261,7 @@ bool WebAssemblyLateEHPrepare::removeUnnecessaryUnreachables(
 // LLVM instruction, we use 'extract_exception' pseudo instruction to retrieve
 // it. The pseudo instruction will be deleted later.
 bool WebAssemblyLateEHPrepare::addExceptionExtraction(MachineFunction &MF) {
+  /*
   const auto &TII = *MF.getSubtarget<WebAssemblySubtarget>().getInstrInfo();
   MachineRegisterInfo &MRI = MF.getRegInfo();
   auto *EHInfo = MF.getWasmEHFuncInfo();
@@ -378,7 +383,7 @@ bool WebAssemblyLateEHPrepare::addExceptionExtraction(MachineFunction &MF) {
         ElseMBB->addSuccessor(EHInfo->getEHPadUnwindDest(EHPad));
     }
   }
-
+*/
   return true;
 }
 

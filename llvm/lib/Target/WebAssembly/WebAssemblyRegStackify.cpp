@@ -361,9 +361,11 @@ static bool isSafeToMove(const MachineOperand *Def, const MachineOperand *Use,
 
   // 'catch' and 'extract_exception' should be the first instruction of a BB and
   // cannot move.
+  /* FIXME aheejin
   if (DefI->getOpcode() == WebAssembly::CATCH ||
       DefI->getOpcode() == WebAssembly::EXTRACT_EXCEPTION_I32)
     return false;
+    */
 
   // Check for register dependencies.
   SmallVector<unsigned, 4> MutableRegisters;
