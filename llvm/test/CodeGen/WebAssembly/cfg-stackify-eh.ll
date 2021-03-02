@@ -233,8 +233,8 @@ unreachable:                                      ; preds = %rethrow5
 ; CHECK:         catch
 ; CHECK:           try
 ; CHECK:             call      __cxa_end_catch
-; CHECK:           catch
-; CHECK:             call      __clang_call_terminate
+; CHECK:           catch_all
+; CHECK:             call      _ZSt9terminatev
 ; CHECK:             unreachable
 ; CHECK:           end_try
 ; CHECK:           rethrow   0                         # to caller
@@ -1579,9 +1579,10 @@ declare i32 @llvm.eh.typeid.for(i8*) #0
 
 declare i8* @__cxa_begin_catch(i8*)
 declare void @__cxa_end_catch()
-declare i8* @__cxa_get_exception_ptr(i8*)
-declare void @__clang_call_terminate(i8*)
-declare void @_ZSt9terminatev()
+; Function Attrs: nounwind
+declare i8* @__cxa_get_exception_ptr(i8*) #0
+; Function Attrs: nounwind noreturn
+declare void @_ZSt9terminatev() #2
 ; Function Attrs: nounwind
 declare void @llvm.memcpy.p0i8.p0i8.i32(i8* noalias nocapture writeonly, i8* noalias nocapture readonly, i32, i1 immarg) #0
 ; Function Attrs: nounwind
@@ -1591,3 +1592,4 @@ declare void @llvm.memset.p0i8.i32(i8* nocapture writeonly, i8, i32, i1 immarg) 
 
 attributes #0 = { nounwind }
 attributes #1 = { noreturn }
+attributes #2 = { nounwind noreturn }
