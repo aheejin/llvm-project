@@ -365,13 +365,11 @@ declare void @llvm.wasm.rethrow() #1
 declare i32 @llvm.eh.typeid.for(i8*) #0
 declare i8* @__cxa_begin_catch(i8*)
 declare void @__cxa_end_catch()
-; Function Attrs: nounwind noreturn
-declare void @_ZSt9terminatev() #2
+declare void @_ZSt9terminatev()
 declare %struct.Temp* @_ZN4TempD2Ev(%struct.Temp* returned)
 
 attributes #0 = { nounwind }
 attributes #1 = { noreturn }
-attributes #2 = { nounwind noreturn }
 
 ; CHECK: __cpp_exception:
 ; CHECK: .eventtype  __cpp_exception i32

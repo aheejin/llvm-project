@@ -1570,8 +1570,7 @@ declare i8* @llvm.wasm.get.exception(token) #0
 ; Function Attrs: nounwind
 declare i32 @llvm.wasm.get.ehselector(token) #0
 declare i8* @__cxa_allocate_exception(i32) #0
-; Function Attrs: noreturn
-declare void @__cxa_throw(i8*, i8*, i8*) #1
+declare void @__cxa_throw(i8*, i8*, i8*)
 ; Function Attrs: noreturn
 declare void @llvm.wasm.rethrow() #1
 ; Function Attrs: nounwind
@@ -1579,10 +1578,8 @@ declare i32 @llvm.eh.typeid.for(i8*) #0
 
 declare i8* @__cxa_begin_catch(i8*)
 declare void @__cxa_end_catch()
-; Function Attrs: nounwind
-declare i8* @__cxa_get_exception_ptr(i8*) #0
-; Function Attrs: nounwind noreturn
-declare void @_ZSt9terminatev() #2
+declare i8* @__cxa_get_exception_ptr(i8*)
+declare void @_ZSt9terminatev()
 ; Function Attrs: nounwind
 declare void @llvm.memcpy.p0i8.p0i8.i32(i8* noalias nocapture writeonly, i8* noalias nocapture readonly, i32, i1 immarg) #0
 ; Function Attrs: nounwind
@@ -1592,4 +1589,3 @@ declare void @llvm.memset.p0i8.i32(i8* nocapture writeonly, i8, i32, i1 immarg) 
 
 attributes #0 = { nounwind }
 attributes #1 = { noreturn }
-attributes #2 = { nounwind noreturn }

@@ -262,17 +262,15 @@ declare i32 @llvm.wasm.get.ehselector(token) #0
 ; Function Attrs: nounwind
 declare i32 @llvm.eh.typeid.for(i8*) #0
 ; Function Attrs: noreturn
-declare void @llvm.wasm.throw(i32, i8*) #2
-declare void @llvm.wasm.rethrow() #2
-; Function Attrs: nounwind
-declare i8* @__cxa_begin_catch(i8*) #0
+declare void @llvm.wasm.throw(i32, i8*) #1
+; Function Attrs: noreturn
+declare void @llvm.wasm.rethrow() #1
+declare i8* @__cxa_begin_catch(i8*)
 declare void @__cxa_end_catch()
-; Function Attrs: nounwind noreturn
-declare void @_ZSt9terminatev() #2
+declare void @_ZSt9terminatev()
 
 attributes #0 = { nounwind }
 attributes #1 = { noreturn }
-attributes #2 = { nounwind noreturn }
 
 ; CHECK-DAG: declare void @llvm.wasm.landingpad.index(token, i32 immarg)
 ; CHECK-DAG: declare i8* @llvm.wasm.lsda()
