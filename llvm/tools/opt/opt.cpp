@@ -547,6 +547,14 @@ static bool shouldForceLegacyPM() {
 // main for opt
 //
 int main(int argc, char **argv) {
+  // Don't know why but with the new pass manager -view-cfg doesn't work. Even
+  // if I specify that pass with 'opt -viewcfg' or 'opt -passes='view-cfg', it
+  // gets skipped here:
+  // https://github.com/llvm/llvm-project/blob/5471766f9d16fbc5a82dd9503729747d901242a1/llvm/include/llvm/IR/PassManager.h#L503-L504
+  // Didn't investiate further on why. Didn't seem worth it. For this 'viewcfg'
+  // branch, it is sufficient if this works in whatever way. Just disable it.
+  EnableNewPassManager = false;
+
   InitLLVM X(argc, argv);
 
   // Enable debug stream buffering.
