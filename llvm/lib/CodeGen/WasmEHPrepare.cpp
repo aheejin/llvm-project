@@ -135,6 +135,10 @@ public:
   StringRef getPassName() const override {
     return "WebAssembly Exception handling preparation";
   }
+
+  void getAnalysisUsage(AnalysisUsage &AU) const override {
+    AU.addRequired<DominatorTreeWrapperPass>();
+  }
 };
 
 } // end anonymous namespace
@@ -154,6 +158,7 @@ PreservedAnalyses WasmEHPreparePass::run(Function &F,
 char WasmEHPrepare::ID = 0;
 INITIALIZE_PASS_BEGIN(WasmEHPrepare, DEBUG_TYPE,
                       "Prepare WebAssembly exceptions", false, false)
+INITIALIZE_PASS_DEPENDENCY(DominatorTreeWrapperPass)
 INITIALIZE_PASS_END(WasmEHPrepare, DEBUG_TYPE, "Prepare WebAssembly exceptions",
                     false, false)
 
@@ -186,6 +191,7 @@ bool WasmEHPrepareImpl::runOnFunction(Function &F) {
   bool Changed = false;
   Changed |= prepareThrows(F);
   Changed |= prepareEHPads(F);
+  Changed |= 
   return Changed;
 }
 

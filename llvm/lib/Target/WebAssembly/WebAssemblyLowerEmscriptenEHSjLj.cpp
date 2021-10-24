@@ -271,6 +271,7 @@
 #include "llvm/IR/Dominators.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/IntrinsicsWebAssembly.h"
+#include "llvm/InitializePasses.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include "llvm/Transforms/Utils/Local.h"
@@ -377,7 +378,11 @@ public:
 } // End anonymous namespace
 
 char WebAssemblyLowerEmscriptenEHSjLj::ID = 0;
-INITIALIZE_PASS(WebAssemblyLowerEmscriptenEHSjLj, DEBUG_TYPE,
+INITIALIZE_PASS_BEGIN(WebAssemblyLowerEmscriptenEHSjLj, DEBUG_TYPE,
+                "WebAssembly Lower Emscripten Exceptions / Setjmp / Longjmp",
+                false, false)
+INITIALIZE_PASS_DEPENDENCY(DominatorTreeWrapperPass)
+INITIALIZE_PASS_END(WebAssemblyLowerEmscriptenEHSjLj, DEBUG_TYPE,
                 "WebAssembly Lower Emscripten Exceptions / Setjmp / Longjmp",
                 false, false)
 
