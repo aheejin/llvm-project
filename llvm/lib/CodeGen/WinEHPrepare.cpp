@@ -128,6 +128,8 @@ FunctionPass *llvm::createWinEHPass(bool DemoteCatchSwitchPHIOnly) {
 }
 
 bool WinEHPrepareImpl::runOnFunction(Function &Fn) {
+  errs() << "--- Before\n";
+  Fn.dump();
   if (!Fn.hasPersonalityFn())
     return false;
 
@@ -139,7 +141,10 @@ bool WinEHPrepareImpl::runOnFunction(Function &Fn) {
     return false;
 
   DL = &Fn.getParent()->getDataLayout();
-  return prepareExplicitEH(Fn);
+  bool ret = prepareExplicitEH(Fn);
+  errs() << "\n--- After\n";
+  Fn.dump();
+  return ret;
 }
 
 static int addUnwindMapEntry(WinEHFuncInfo &FuncInfo, int ToState,
@@ -1093,12 +1098,14 @@ void WinEHPrepareImpl::removeImplausibleInstructions(Function &F) {
   for (auto &Funclet : FuncletBlocks) {
     BasicBlock *FuncletPadBB = Funclet.first;
     std::vector<BasicBlock *> &BlocksInFunclet = Funclet.second;
+    errs() << "Funclet: Pad = " << FuncletPadBB->getName() << "\n";
     Instruction *FirstNonPHI = FuncletPadBB->getFirstNonPHI();
     auto *FuncletPad = dyn_cast<FuncletPadInst>(FirstNonPHI);
     auto *CatchPad = dyn_cast_or_null<CatchPadInst>(FuncletPad);
     auto *CleanupPad = dyn_cast_or_null<CleanupPadInst>(FuncletPad);
 
     for (BasicBlock *BB : BlocksInFunclet) {
+      errs() << "  " << BB->getName() << "\n";
       for (Instruction &I : *BB) {
         auto *CB = dyn_cast<CallBase>(&I);
         if (!CB)
@@ -1120,6 +1127,9 @@ void WinEHPrepareImpl::removeImplausibleInstructions(Function &F) {
 
         // This call site was not part of this funclet, remove it.
         if (isa<InvokeInst>(CB)) {
+          errs() << "  RemoveUnwindEdge: BB = " << BB->getName();
+          errs() << "    CI = " << *CB;
+
           // Remove the unwind edge if it was an invoke.
           removeUnwindEdge(BB);
           // Get a pointer to the new call.
@@ -1159,6 +1169,7 @@ void WinEHPrepareImpl::removeImplausibleInstructions(Function &F) {
         }
       }
     }
+    errs() << "\n";
   }
 }
 

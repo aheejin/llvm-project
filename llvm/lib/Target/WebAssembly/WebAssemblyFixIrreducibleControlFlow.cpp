@@ -62,6 +62,18 @@ using namespace llvm;
 
 #define DEBUG_TYPE "wasm-fix-irreducible-control-flow"
 
+void printBlock(MachineBasicBlock *BB) {
+  errs() << BB->getNumber() << "." << BB->getName();
+}
+
+template <typename T> void printBlocks(T list) {
+  for (auto *BB : list) {
+    printBlock(BB);
+    errs() << " ";
+  }
+  errs() << "\n";
+}
+
 namespace {
 
 using BlockVector = SmallVector<MachineBasicBlock *, 4>;
@@ -184,6 +196,26 @@ private:
         }
       }
     }
+
+    errs() << "\nReachabilityGraph::calculate\n";
+    errs() << "Entry = ";
+    printBlock(Entry);
+    errs() << "\n";
+    errs() << "Blocks = ";
+    printBlocks(Blocks);
+    errs() << "Loopers = ";
+    printBlocks(Loopers);
+    errs() << "LoopEntries = ";
+    printBlocks(LoopEntries);
+    errs() << "LoopEnterers =\n";
+    for (auto KV : LoopEnterers) {
+      errs() << "  Looper: ";
+      printBlock(KV.first);
+      errs() << "\n";
+      errs() << "  Enterers: ";
+      printBlocks(LoopEnterers[KV.first]);
+    }
+    errs() << "\n";
   }
 };
 
@@ -250,10 +282,12 @@ public:
 
 bool WebAssemblyFixIrreducibleControlFlow::processRegion(
     MachineBasicBlock *Entry, BlockSet &Blocks, MachineFunction &MF) {
+  errs() << "\nprocessRegion\n";
   bool Changed = false;
   // Remove irreducibility before processing child loops, which may take
   // multiple iterations.
   while (true) {
+    errs() << "\nwhile (true)\n";
     ReachabilityGraph Graph(Entry, Blocks);
 
     bool FoundIrreducibility = false;
@@ -294,7 +328,11 @@ bool WebAssemblyFixIrreducibleControlFlow::processRegion(
         }
       }
 
+      errs() << "MutualLoopEntries = ";
+      printBlocks(MutualLoopEntries);
+
       if (MutualLoopEntries.size() > 1) {
+        errs() << "FoundIrreducibility\n";
         makeSingleEntryLoop(MutualLoopEntries, Blocks, MF, Graph);
         FoundIrreducibility = true;
         Changed = true;
@@ -310,6 +348,7 @@ bool WebAssemblyFixIrreducibleControlFlow::processRegion(
     if (FoundIrreducibility) {
       continue;
     }
+    errs() << "SubLoop\n";
 
     for (auto *LoopEntry : Graph.getLoopEntries()) {
       LoopBlocks InnerBlocks(LoopEntry, Graph.getLoopEnterers(LoopEntry));
@@ -338,6 +377,10 @@ void WebAssemblyFixIrreducibleControlFlow::makeSingleEntryLoop(
     BlockSet &Entries, BlockSet &Blocks, MachineFunction &MF,
     const ReachabilityGraph &Graph) {
   assert(Entries.size() >= 2);
+  assert(Entries.size() >= 2);
+  errs() << "\nmakeSingleEntryLoop\n";
+  errs() << "Entries =";
+  printBlocks(Entries);
 
   // Sort the entries to ensure a deterministic build.
   BlockVector SortedEntries = getSortedEntries(Entries);
