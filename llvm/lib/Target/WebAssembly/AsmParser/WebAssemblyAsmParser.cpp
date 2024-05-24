@@ -45,7 +45,7 @@ namespace {
 /// WebAssemblyOperand - Instances of this class represent the operands in a
 /// parsed Wasm machine instruction.
 struct WebAssemblyOperand : public MCParsedAsmOperand {
-  enum KindTy { Token, Integer, Float, Symbol, BrList } Kind;
+  enum KindTy { Token, Integer, Float, Symbol, BrList, CatchList } Kind;
 
   SMLoc StartLoc, EndLoc;
 
@@ -69,12 +69,24 @@ struct WebAssemblyOperand : public MCParsedAsmOperand {
     std::vector<unsigned> List;
   };
 
+  enum CatchKind { Catch, CatchRef, CatchAll, CatchAllRef };
+  struct CaLOpElem {
+    CatchKind Kind;
+    unsigned Dest;
+    unsigned Tag;
+  };
+
+  struct CaLOp {
+    std::vector<CaLOpElem> List;
+  };
+
   union {
     struct TokOp Tok;
     struct IntOp Int;
     struct FltOp Flt;
     struct SymOp Sym;
     struct BrLOp BrL;
+    struct CaLOp CaL;
   };
 
   WebAssemblyOperand(KindTy K, SMLoc Start, SMLoc End, TokOp T)
@@ -87,10 +99,16 @@ struct WebAssemblyOperand : public MCParsedAsmOperand {
       : Kind(K), StartLoc(Start), EndLoc(End), Sym(S) {}
   WebAssemblyOperand(KindTy K, SMLoc Start, SMLoc End)
       : Kind(K), StartLoc(Start), EndLoc(End), BrL() {}
+  /* TODO aheejin
+  WebAssemblyOperand(KindTy K, SMLoc Start, SMLoc End, CaLOp C = {})
+      : Kind(K), StartLoc(Start), EndLoc(End), CaL() {}
+      */
 
   ~WebAssemblyOperand() {
     if (isBrList())
       BrL.~BrLOp();
+    if (isCatchList())
+      CaL.~CaLOp();
   }
 
   bool isToken() const override { return Kind == Token; }
@@ -99,6 +117,7 @@ struct WebAssemblyOperand : public MCParsedAsmOperand {
   bool isMem() const override { return false; }
   bool isReg() const override { return false; }
   bool isBrList() const { return Kind == BrList; }
+  bool isCatchList() const { return Kind == CatchList; }
 
   MCRegister getReg() const override {
     llvm_unreachable("Assembly inspects a register operand");
@@ -167,6 +186,9 @@ struct WebAssemblyOperand : public MCParsedAsmOperand {
       break;
     case BrList:
       OS << "BrList:" << BrL.List.size();
+      break;
+    case CatchList:
+      OS << "CatchListList:" << CaL.List.size();
       break;
     }
   }

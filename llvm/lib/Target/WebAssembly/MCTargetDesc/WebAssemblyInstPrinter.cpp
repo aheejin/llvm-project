@@ -366,3 +366,8 @@ void WebAssemblyInstPrinter::printWebAssemblySignatureOperand(const MCInst *MI,
     }
   }
 }
+
+void WebAssemblyInstPrinter::printCatchList(const MCInst *MI, unsigned OpNo,
+                                            raw_ostream &O) {
+  // TODO aheejin
+}
