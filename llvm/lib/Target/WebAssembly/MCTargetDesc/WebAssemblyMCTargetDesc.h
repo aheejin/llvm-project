@@ -87,6 +87,8 @@ enum OperandType {
   OPERAND_BRLIST,
   /// 32-bit unsigned table number.
   OPERAND_TABLE,
+  /// A list of catch clauses for try_table.
+  OPERAND_CATCH_LIST,
 };
 } // end namespace WebAssembly
 

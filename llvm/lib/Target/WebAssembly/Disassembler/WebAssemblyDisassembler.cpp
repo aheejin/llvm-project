@@ -295,6 +295,10 @@ MCDisassembler::DecodeStatus WebAssemblyDisassembler::getInstruction(
       // If you hit this that probably means a bad instruction definition in
       // tablegen.
       llvm_unreachable("Register operand in WebAssemblyDisassembler");
+    case WebAssembly::OPERAND_CATCH_LIST: {
+      // TODO aheejin
+      break;
+    }
     default:
       llvm_unreachable("Unknown operand type in WebAssemblyDisassembler");
     }
