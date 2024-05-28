@@ -125,6 +125,14 @@ defm DEBUG_UNREACHABLE : NRI<(outs), (ins), [(debugtrap)], "unreachable", 0x00>;
 // Exception handling instructions
 //===----------------------------------------------------------------------===//
 
+// A list of catch clauses attached to try_table.
+def CatchListAsmOperand : AsmOperandClass { let Name = "CatchList"; }
+let OperandNamespace = "WebAssembly", OperandType = "OPERAND_CATCH_LIST" in
+def catch_list : Operand<i32> {
+  let ParserMatchClass = CatchListAsmOperand;
+  let PrintMethod = "printCatchList";
+}
+
 let Predicates = [HasExceptionHandling] in {
 
 // Throwing an exception: throw / throw_ref
@@ -133,14 +141,6 @@ defm THROW : I<(outs), (ins tag_op:$tag, variable_ops),
                (outs), (ins tag_op:$tag), [],
                "throw   \t$tag", "throw   \t$tag", 0x08>;
 } // isTerminator = 1, hasCtrlDep = 1, isBarrier = 1
-
-// A list of catch clauses attached to try_table.
-def CatchListAsmOperand : AsmOperandClass { let Name = "CatchList"; }
-let OperandNamespace = "WebAssembly", OperandType = "OPERAND_CATCH_LIST" in
-def catch_list : Operand<i32> {
-  let ParserMatchClass = CatchListAsmOperand;
-  let PrintMethod = "printCatchList";
-}
 
 // Region within which an exception is caught: try / end_try
 let Uses = [VALUE_STACK], Defs = [VALUE_STACK] in {
