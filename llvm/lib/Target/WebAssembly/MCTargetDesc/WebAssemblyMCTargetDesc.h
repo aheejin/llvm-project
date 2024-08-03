@@ -474,8 +474,12 @@ inline bool isCatch(unsigned Opc) {
   switch (Opc) {
   case WebAssembly::CATCH:
   case WebAssembly::CATCH_S:
+  case WebAssembly::CATCH_REF:
+  case WebAssembly::CATCH_REF_S:
   case WebAssembly::CATCH_ALL:
   case WebAssembly::CATCH_ALL_S:
+  case WebAssembly::CATCH_ALL_REF:
+  case WebAssembly::CATCH_ALL_REF_S:
     return true;
   default:
     return false;

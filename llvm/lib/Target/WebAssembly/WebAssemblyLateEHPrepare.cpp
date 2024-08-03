@@ -37,6 +37,7 @@ class WebAssemblyLateEHPrepare final : public MachineFunctionPass {
   void recordCatchRetBBs(MachineFunction &MF);
   bool hoistCatches(MachineFunction &MF);
   bool addCatchAlls(MachineFunction &MF);
+  bool convertCatchesToRefs(MachineFunction &MF);
   bool replaceFuncletReturns(MachineFunction &MF);
   bool removeUnnecessaryUnreachables(MachineFunction &MF);
   bool restoreStackPointer(MachineFunction &MF);
@@ -126,6 +127,8 @@ bool WebAssemblyLateEHPrepare::runOnMachineFunction(MachineFunction &MF) {
     recordCatchRetBBs(MF);
     Changed |= hoistCatches(MF);
     Changed |= addCatchAlls(MF);
+    if (WebAssembly::WasmEnableExnref)
+      Changed |= convertCatchesToRefs(MF);
     Changed |= replaceFuncletReturns(MF);
   }
   Changed |= removeUnnecessaryUnreachables(MF);
@@ -211,6 +214,43 @@ bool WebAssemblyLateEHPrepare::addCatchAlls(MachineFunction &MF) {
       InsertPos++;
     // This runs after hoistCatches(), so we assume that if there is a catch,
     // that should be the first non-EH-label instruction in an EH pad.
+    if (InsertPos == MBB.end() ||
+        !WebAssembly::isCatch(InsertPos->getOpcode())) {
+      Changed = true;
+      BuildMI(MBB, InsertPos,
+              InsertPos == MBB.end() ? DebugLoc() : InsertPos->getDebugLoc(),
+              TII.get(WebAssembly::CATCH_ALL));
+    }
+  }
+  return Changed;
+}
+
+// TODO
+bool WebAssemblyLateEHPrepare::convertCatchesToRefs(MachineFunction &MF) {
+  bool Changed = false;
+  const auto &TII = *MF.getSubtarget<WebAssemblySubtarget>().getInstrInfo();
+  auto &MRI = MF.getRegInfo();
+  DenseMap<MachineBasicBlock *, Register> EHPadToExnReg;
+
+  for (auto &MBB : MF) {
+    if (!MBB.isEHPad())
+      continue;
+    auto InsertPos = MBB.begin();
+    // Skip EH_LABELs in the beginning of an EH pad if present.
+    while (InsertPos != MBB.end() && InsertPos->isEHLabel())
+      InsertPos++;
+    // This runs after hoistCatches(), so we assume that if there is a catch,
+    // that should be the first non-EH-label instruction in an EH pad.
+    auto *Catch = &*InsertPos;
+    InsertPos++;
+    auto ExnReg = MRI.createVirtualRegister(&WebAssembly::EXNREFRegClass);
+    if (Catch->getOpcode() == WebAssembly::CATCH) {
+      BuildMI(MBB, InsertPos, Catch->getDebugLoc(), TII.get(WebAssembly::CATCH_REF).add
+    } else if (Catch->getOpcode() == WebAssembly::CATCH_ALL) {
+    } else {
+      assert(false);
+    }
+
     if (InsertPos == MBB.end() ||
         !WebAssembly::isCatch(InsertPos->getOpcode())) {
       Changed = true;
