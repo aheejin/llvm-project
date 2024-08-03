@@ -246,10 +246,13 @@ bool WebAssemblyLateEHPrepare::replaceFuncletReturns(MachineFunction &MF) {
       break;
     }
     case WebAssembly::CLEANUPRET: {
-      // Replace a cleanupret with a rethrow. For C++ support, currently
-      // rethrow's immediate argument is always 0 (= the latest exception).
-      BuildMI(MBB, TI, TI->getDebugLoc(), TII.get(WebAssembly::RETHROW))
-          .addImm(0);
+      if (WebAssembly::WasmEnableExnref) {
+      } else {
+        // Replace a cleanupret with a rethrow. For C++ support, currently
+        // rethrow's immediate argument is always 0 (= the latest exception).
+        BuildMI(MBB, TI, TI->getDebugLoc(), TII.get(WebAssembly::RETHROW))
+            .addImm(0);
+      }
       TI->eraseFromParent();
       Changed = true;
       break;
@@ -259,14 +262,15 @@ bool WebAssemblyLateEHPrepare::replaceFuncletReturns(MachineFunction &MF) {
   return Changed;
 }
 
-// Remove unnecessary unreachables after a throw or rethrow.
+// Remove unnecessary unreachables after a throw/rethrow/throw_ref.
 bool WebAssemblyLateEHPrepare::removeUnnecessaryUnreachables(
     MachineFunction &MF) {
   bool Changed = false;
   for (auto &MBB : MF) {
     for (auto &MI : MBB) {
       if (MI.getOpcode() != WebAssembly::THROW &&
-          MI.getOpcode() != WebAssembly::RETHROW)
+          MI.getOpcode() != WebAssembly::RETHROW &&
+          MI.getOpcode() != WebAssembly::THROW_REF)
         continue;
       Changed = true;
 

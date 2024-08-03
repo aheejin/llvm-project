@@ -140,11 +140,20 @@ let isTerminator = 1, hasCtrlDep = 1, isBarrier = 1 in {
 defm THROW : I<(outs), (ins tag_op:$tag, variable_ops),
                (outs), (ins tag_op:$tag), [],
                "throw   \t$tag", "throw   \t$tag", 0x08>;
+defm THROW_REF : I<(outs), (ins EXNREF:$exn), (outs), (ins), [],
+                   "throw_ref \t$exn", "throw_ref", 0x0a>;
+let isCodeGenOnly = 1 in
+defm RETHROW : NRI<(outs), (ins i32imm:$depth), [], "rethrow \t$depth", 0x09>;
 } // isTerminator = 1, hasCtrlDep = 1, isBarrier = 1
+
+// The depth argument will be computed in CFGStackify. We set it to 0 here for
+// now.
+def : Pat<(int_wasm_rethrow), (RETHROW 0)>;
 
 // Region within which an exception is caught: try / end_try
 let Uses = [VALUE_STACK], Defs = [VALUE_STACK] in {
-defm TRY_TABLE : NRI<(outs), (ins Signature:$sig), [], "try_table     \t$sig", 0x06>;
+defm TRY_TABLE : NRI<(outs), (ins Signature:$sig, catch_list:$cal), [],
+                     "try_table \t$sig", 0x06>;
 defm END_TRY_TABLE : NRI<(outs), (ins), [], "end_try_table", 0x0b>;
 } // Uses = [VALUE_STACK], Defs = [VALUE_STACK]
 
@@ -157,17 +166,6 @@ let isTerminator = 1, hasSideEffects = 1, isBarrier = 1, hasCtrlDep = 1,
 } // isTerminator = 1, hasSideEffects = 1, isBarrier = 1, hasCtrlDep = 1,
   // isPseudo = 1, isEHScopeReturn = 1
 
-//===----------------------------------------------------------------------===//
-// Legacy exception handling instructions
-//===----------------------------------------------------------------------===//
-
-// Rethrowing an exception: rethrow
-let isTerminator = 1, hasCtrlDep = 1, isBarrier = 1 in
-defm RETHROW : NRI<(outs), (ins i32imm:$depth), [], "rethrow \t$depth", 0x09>;
-// The depth argument will be computed in CFGStackify. We set it to 0 here for
-// now.
-def : Pat<(int_wasm_rethrow), (RETHROW 0)>;
-
 // Region within which an exception is caught: try / end_try
 let Uses = [VALUE_STACK], Defs = [VALUE_STACK] in {
 defm TRY     : NRI<(outs), (ins Signature:$sig), [], "try     \t$sig", 0x06>;
@@ -175,12 +173,18 @@ defm END_TRY : NRI<(outs), (ins), [], "end_try", 0x0b>;
 } // Uses = [VALUE_STACK], Defs = [VALUE_STACK]
 
 // Catching an exception: catch / catch_all
-let hasCtrlDep = 1, hasSideEffects = 1 in {
-let variadicOpsAreDefs = 1 in
+let hasCtrlDep = 1, hasSideEffects = 1, isCodeGenOnly = 1 in {
+let variadicOpsAreDefs = 1 in {
 defm CATCH : I<(outs), (ins tag_op:$tag, variable_ops),
                (outs), (ins tag_op:$tag), [],
                "catch",  "catch   \t$tag", 0x07>;
+defm CATCH_REF : I<(outs EXNREF:$dst), (ins tag_op:$tag, variable_ops),
+                   (outs), (ins tag_op:$tag), [],
+                   "catch_ref", "catch_ref \t$tag", 0x00>;
+}
 defm CATCH_ALL : NRI<(outs), (ins), [], "catch_all", 0x19>;
+defm CATCH_ALL_REF : I<(outs EXNREF:$dst), (ins), (outs), (ins), [],
+                       "catch_all_ref \t$dst", "catch_all_ref", 0x00>;
 }
 
 // Delegating an exception: delegate
