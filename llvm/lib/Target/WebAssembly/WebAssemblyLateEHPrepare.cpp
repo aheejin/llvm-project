@@ -127,9 +127,9 @@ bool WebAssemblyLateEHPrepare::runOnMachineFunction(MachineFunction &MF) {
     recordCatchRetBBs(MF);
     Changed |= hoistCatches(MF);
     Changed |= addCatchAlls(MF);
+    Changed |= replaceFuncletReturns(MF);
     if (WebAssembly::WasmEnableExnref)
       Changed |= addCatchRefsAndThrowRefs(MF);
-    Changed |= replaceFuncletReturns(MF);
   }
   Changed |= removeUnnecessaryUnreachables(MF);
   if (MF.getFunction().hasPersonalityFn())
@@ -225,48 +225,6 @@ bool WebAssemblyLateEHPrepare::addCatchAlls(MachineFunction &MF) {
   return Changed;
 }
 
-// TODO
-bool WebAssemblyLateEHPrepare::addCatchRefsAndThrowRefs(MachineFunction &MF) {
-  bool Changed = false;
-  const auto &TII = *MF.getSubtarget<WebAssemblySubtarget>().getInstrInfo();
-  auto &MRI = MF.getRegInfo();
-  DenseMap<MachineBasicBlock *, SmallVector<MachineInstr*, 2>> EHPadToRethrows;
-  DenseMap<MachineBasicBlock *, Register> EHPadToExnReg;
-
-  for (auto &MBB : MF) {
-    for (auto &MI : MBB) {
-      if (MI.getOpcode() == WebAssembly::RETHROW) {
-        Changed = true;
-        auto *EHPad = getMatchingEHPad(&MI);
-        EHPadToRethrows[EHPad].push_back(&MI);
-      }
-    }
-  }
-
-  for (auto &[EHPad, Rethrows] : EHPadToRethrows) {
-    auto InsertPos = EHPad->begin();
-    // Skip EH_LABELs in the beginning of an EH pad if present.
-    while (InsertPos != EHPad->end() && InsertPos->isEHLabel())
-      InsertPos++;
-    // This runs after hoistCatches(), so we assume that if there is a catch,
-    // that should be the first non-EH-label instruction in an EH pad.
-    auto *Catch = &*InsertPos;
-    InsertPos++;
-    auto ExnReg = MRI.createVirtualRegister(&WebAssembly::EXNREFRegClass);
-    if (Catch->getOpcode() == WebAssembly::CATCH) {
-
-      MachineInstr *CatchRef = BuildMI(*EHPad, InsertPos, Catch->getDebugLoc(),
-                                       TII.get(WebAssembly::CATCH_REF));
-      for (
-    } else if (Catch->getOpcode() == WebAssembly::CATCH_ALL) {
-    } else {
-      assert(false);
-    }
-
-  }
-  return Changed;
-}
-
 // Replace pseudo-instructions catchret and cleanupret with br and rethrow
 // respectively.
 bool WebAssemblyLateEHPrepare::replaceFuncletReturns(MachineFunction &MF) {
@@ -291,19 +249,74 @@ bool WebAssemblyLateEHPrepare::replaceFuncletReturns(MachineFunction &MF) {
       break;
     }
     case WebAssembly::CLEANUPRET: {
-      if (WebAssembly::WasmEnableExnref) {
-      } else {
-        // Replace a cleanupret with a rethrow. For C++ support, currently
-        // rethrow's immediate argument is always 0 (= the latest exception).
-        BuildMI(MBB, TI, TI->getDebugLoc(), TII.get(WebAssembly::RETHROW))
-            .addImm(0);
-      }
+      // Replace a cleanupret with a rethrow. For C++ support, currently
+      // rethrow's immediate argument is always 0 (= the latest exception).
+      BuildMI(MBB, TI, TI->getDebugLoc(), TII.get(WebAssembly::RETHROW))
+          .addImm(0);
       TI->eraseFromParent();
       Changed = true;
       break;
     }
     }
   }
+  return Changed;
+}
+
+// TODO
+bool WebAssemblyLateEHPrepare::addCatchRefsAndThrowRefs(MachineFunction &MF) {
+  bool Changed = false;
+  const auto &TII = *MF.getSubtarget<WebAssemblySubtarget>().getInstrInfo();
+  auto &MRI = MF.getRegInfo();
+  DenseMap<MachineBasicBlock *, SmallVector<MachineInstr*, 2>> EHPadToRethrows;
+
+  for (auto &MBB : MF) {
+    for (auto &MI : MBB) {
+      if (MI.getOpcode() == WebAssembly::RETHROW) {
+        Changed = true;
+        auto *EHPad = getMatchingEHPad(&MI);
+        EHPadToRethrows[EHPad].push_back(&MI);
+      }
+    }
+  }
+
+  for (auto &[EHPad, Rethrows] : EHPadToRethrows) {
+    auto InsertPos = EHPad->begin();
+    // Skip EH_LABELs in the beginning of an EH pad if present.
+    while (InsertPos != EHPad->end() && InsertPos->isEHLabel())
+      InsertPos++;
+    // This runs after hoistCatches(), so we assume that if there is a catch,
+    // that should be the first non-EH-label instruction in an EH pad.
+    auto *Catch = &*InsertPos;
+    InsertPos++;
+    auto ExnReg = MRI.createVirtualRegister(&WebAssembly::EXNREFRegClass);
+    if (Catch->getOpcode() == WebAssembly::CATCH) {
+      MachineInstrBuilder MIB = BuildMI(*EHPad, InsertPos, Catch->getDebugLoc(),
+                                       TII.get(WebAssembly::CATCH_REF));
+      for (const auto &Def : Catch->defs())
+        MIB.addDef(Def.getReg());
+      MIB.addDef(ExnReg);
+      for (const auto &Use : Catch->uses()) {
+        MIB.addExternalSymbol(Use.getSymbolName());
+        break;
+      }
+    } else if (Catch->getOpcode() == WebAssembly::CATCH_ALL) {
+      MachineInstrBuilder MIB = BuildMI(*EHPad, InsertPos, Catch->getDebugLoc(),
+                                       TII.get(WebAssembly::CATCH_ALL_REF));
+      MIB.addDef(ExnReg);
+    } else {
+      assert(false);
+    }
+    Catch->eraseFromParent();
+
+    for (auto *Rethrow : Rethrows) {
+      auto InsertPos = Rethrow->getIterator()++;
+      BuildMI(*Rethrow->getParent(), InsertPos, Rethrow->getDebugLoc(),
+              TII.get(WebAssembly::THROW_REF))
+          .addReg(ExnReg);
+      Rethrow->eraseFromParent();
+    }
+  }
+
   return Changed;
 }
 
