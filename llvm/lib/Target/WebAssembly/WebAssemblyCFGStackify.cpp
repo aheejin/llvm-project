@@ -823,6 +823,14 @@ void WebAssemblyCFGStackify::placeTryTableMarker(MachineBasicBlock &MBB) {
         AfterSet.insert(&MI);
 #endif
     }
+
+#ifndef NDEBUG
+    // CATCH, CATCH_REF, CATCH_ALL, and CATCH_ALL_REF are pseudo-instructions
+    // that simulate the block return value, so they should be placed after the
+    // END_TRY_TABLE.
+    if (WebAssembly::isCatch(MI.getOpcode()))
+      AfterSet.insert(&MI);
+#endif
   }
 
   // Mark the end of the TRY_TABLE.
