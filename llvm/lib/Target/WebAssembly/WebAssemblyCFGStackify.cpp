@@ -507,11 +507,10 @@ void WebAssemblyCFGStackify::placeTryMarker(MachineBasicBlock &MBB) {
   MachineBasicBlock *Cont = &*Iter;
 
   assert(Cont != &MF.front());
-  MachineBasicBlock *LayoutPred = Cont->getPrevNode();
 
   // If the nearest common dominator is inside a more deeply nested context,
   // walk out to the nearest scope which isn't more deeply nested.
-  for (MachineFunction::iterator I(LayoutPred), E(Header); I != E; --I) {
+  for (MachineFunction::iterator I(Bottom), E(Header); I != E; --I) {
     if (MachineBasicBlock *ScopeTop = ScopeTops[I->getNumber()]) {
       if (ScopeTop->getNumber() > Header->getNumber()) {
         // Skip over an intervening scope.
@@ -696,8 +695,8 @@ void WebAssemblyCFGStackify::placeTryTableMarker(MachineBasicBlock &MBB) {
   // walk out to the nearest scope which isn't more deeply nested.
   WebAssemblyException *WE = WEI.getExceptionFor(&MBB);
   assert(WE);
-  MachineBasicBlock *LayoutPred = SRI.getBottom(WE);
-  for (MachineFunction::iterator I(LayoutPred), E(Header); I != E; --I) {
+  MachineBasicBlock *Bottom = SRI.getBottom(WE);
+  for (MachineFunction::iterator I(Bottom), E(Header); I != E; --I) {
     if (MachineBasicBlock *ScopeTop = ScopeTops[I->getNumber()]) {
       if (ScopeTop->getNumber() > Header->getNumber()) {
         // Skip over an intervening scope.
@@ -800,6 +799,7 @@ void WebAssemblyCFGStackify::placeTryTableMarker(MachineBasicBlock &MBB) {
               TII.get(WebAssembly::TRY_TABLE))
           .addImm(int64_t(WebAssembly::BlockType::Void));
   // TODO catch clauses
+  // TODO block return type?
 
   // Decide where in MBB to put the END_TRY_TABLE.
   BeforeSet.clear();
@@ -827,13 +827,12 @@ void WebAssemblyCFGStackify::placeTryTableMarker(MachineBasicBlock &MBB) {
 
   // Mark the end of the TRY_TABLE.
   InsertPos = getEarliestInsertPos(&MBB, BeforeSet, AfterSet);
-  MachineInstr *End =
-      BuildMI(MBB, InsertPos, Bottom->findBranchDebugLoc(),
-              TII.get(WebAssembly::END_TRY_TABLE));
-  registerTryScope(Begin, End, &MBB);
-
+  MachineInstr *End = BuildMI(MBB, InsertPos, Bottom->findBranchDebugLoc(),
+                              TII.get(WebAssembly::END_TRY_TABLE));
   // TODO should this be registerTryScope? (or create registerTryTableScope?)
   registerScope(Begin, End);
+  // Track the farthest-spanning scope that ends at this point.
+  updateScopeTops(Header, &MBB);
 }
 
 void WebAssemblyCFGStackify::removeUnnecessaryInstrs(MachineFunction &MF) {
