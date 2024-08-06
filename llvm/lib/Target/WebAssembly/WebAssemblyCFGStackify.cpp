@@ -367,21 +367,22 @@ void WebAssemblyCFGStackify::placeBlockMarker(MachineBasicBlock &MBB) {
   AfterSet.clear();
   for (auto &MI : MBB) {
 #ifndef NDEBUG
-    // END_BLOCK should precede existing BLOCK/LOOP/TRY/TRY_TABLE markers.
-    if (MI.getOpcode() == WebAssembly::BLOCK ||
-        MI.getOpcode() == WebAssembly::LOOP ||
-        MI.getOpcode() == WebAssembly::TRY ||
-        MI.getOpcode() == WebAssembly::TRY_TABLE)
+    // END_BLOCK should precede existing LOOP markers.
+    if (MI.getOpcode() == WebAssembly::LOOP)
       AfterSet.insert(&MI);
 #endif
 
     // If there is a previously placed END_LOOP marker and the header of the
     // loop is above this block's header, the END_LOOP should be placed after
-    // the BLOCK, because the loop contains this block. Otherwise the END_LOOP
-    // should be placed before the BLOCK. The same for END_TRY/END_TRY_TABLE.
+    // the END_BLOCK, because the loop contains this block. Otherwise the
+    // END_LOOP should be placed before the END_BLOCK. The same for END_TRY.
+    //
+    // Note that while there can be existing END_TRYs, there can't be
+    // END_TRY_TABLEs; END_TRYs are placed when its corresponding EH pad is
+    // processed, so they are placed below MBB (EH pad) in placeTryMarker. But
+    // END_TRY_TABLE is placed like a END_BLOCK, so they can't be here already.
     if (MI.getOpcode() == WebAssembly::END_LOOP ||
-        MI.getOpcode() == WebAssembly::END_TRY ||
-        MI.getOpcode() == WebAssembly::END_TRY_TABLE) {
+        MI.getOpcode() == WebAssembly::END_TRY) {
       if (EndToBegin[&MI]->getParent()->getNumber() >= Header->getNumber())
         BeforeSet.insert(&MI);
 #ifndef NDEBUG
@@ -618,10 +619,8 @@ void WebAssemblyCFGStackify::placeTryMarker(MachineBasicBlock &MBB) {
   AfterSet.clear();
   for (const auto &MI : *Cont) {
 #ifndef NDEBUG
-    // END_TRY should precede existing BLOCK/LOOP/TRY markers.
-    if (MI.getOpcode() == WebAssembly::BLOCK ||
-        MI.getOpcode() == WebAssembly::LOOP ||
-        MI.getOpcode() == WebAssembly::TRY)
+    // END_TRY should precede existing LOOP markers.
+    if (MI.getOpcode() == WebAssembly::LOOP)
       AfterSet.insert(&MI);
 
     // All END_TRY markers placed earlier belong to exceptions that contains
@@ -741,7 +740,7 @@ void WebAssemblyCFGStackify::placeTryTableMarker(MachineBasicBlock &MBB) {
     // All END_(BLOCK/LOOP/TRY_TABLE) markers should be before the TRY_TABLE.
     if (MI.getOpcode() == WebAssembly::END_BLOCK ||
         MI.getOpcode() == WebAssembly::END_LOOP ||
-        MI.getOpcode() == WebAssembly::END_TRY)
+        MI.getOpcode() == WebAssembly::END_TRY_TABLE)
       BeforeSet.insert(&MI);
 #endif
 
@@ -807,30 +806,23 @@ void WebAssemblyCFGStackify::placeTryTableMarker(MachineBasicBlock &MBB) {
   AfterSet.clear();
   for (const auto &MI : MBB) {
 #ifndef NDEBUG
-    // END_TRY_TABLE should precede existing BLOCK/LOOP/TRY_TABLE markers.
-    if (MI.getOpcode() == WebAssembly::BLOCK ||
-        MI.getOpcode() == WebAssembly::LOOP ||
-        MI.getOpcode() == WebAssembly::TRY_TABLE)
+    // END_TRY_TABLE should precede existing LOOP markers.
+    if (MI.getOpcode() == WebAssembly::LOOP)
       AfterSet.insert(&MI);
 #endif
-    // TODO from here fix
-    // If there is a previously placed END_LOOP marker and its header is after
-    // where TRY_TABLE marker is, this loop is contained within the 'catch'
-    // part, so the END_TRY_TABLE marker should go after that. Otherwise, the
-    // whole try-catch is contained within this loop, so the END_TRY_TABLE
-    // should go before that.
+
+    // If there is a previously placed END_LOOP marker and the header of the
+    // loop is above this try_table's header, the END_LOOP should be placed
+    // after the END_TRY_TABLE, because the loop contains this block. Otherwise
+    // the END_LOOP should be placed before the END_TRY_TABLE.
     if (MI.getOpcode() == WebAssembly::END_LOOP) {
-      // For a LOOP to be after TRY_TABLE, LOOP's BB should be after TRY_TABLE's
-      // BB; if they are in the same BB, LOOP is always before TRY_TABLE.
-      if (EndToBegin[&MI]->getParent()->getNumber() > Header->getNumber())
+      if (EndToBegin[&MI]->getParent()->getNumber() >= Header->getNumber())
         BeforeSet.insert(&MI);
 #ifndef NDEBUG
       else
         AfterSet.insert(&MI);
 #endif
     }
-
-    // It is not possible for an END_BLOCK to be already in this block.
   }
 
   // Mark the end of the TRY_TABLE.
@@ -1886,7 +1878,10 @@ void WebAssemblyCFGStackify::rewriteDepthImmediates(MachineFunction &MF) {
 
       case WebAssembly::CATCH:
       case WebAssembly::CATCH_ALL:
-        EHPadStack.pop_back();
+        // In case of the new EH (exnref) proposal, all CATCH*s are pseudo
+        // instructions to simulate block returning values.
+        if (!WebAssembly::WasmEnableExnref)
+          EHPadStack.pop_back();
         break;
 
       case WebAssembly::RETHROW:
