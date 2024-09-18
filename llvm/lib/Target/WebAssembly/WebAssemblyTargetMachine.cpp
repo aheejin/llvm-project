@@ -401,9 +401,6 @@ static void basicCheckForEHAndSjLj(TargetMachine *TM) {
   if (WasmEnableEmEH && WasmEnableSjLj)
     report_fatal_error(
         "-enable-emscripten-cxx-exceptions not allowed with -wasm-enable-sjlj");
-  if (WasmEnableExnref && !WasmEnableEH)
-    report_fatal_error(
-        "-wasm-enable-exnref should be used with -wasm-enable-eh");
 
   // Here we make sure TargetOptions.ExceptionModel is the same as
   // MCAsmInfo.ExceptionsType. Normally these have to be the same, because clang
