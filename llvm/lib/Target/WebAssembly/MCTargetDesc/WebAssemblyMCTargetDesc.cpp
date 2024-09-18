@@ -60,7 +60,7 @@ cl::opt<bool> WebAssembly::WasmEnableSjLj(
 // later can be removed after the legacy WAsm EH instructions are removed.
 cl::opt<bool> WebAssembly::WasmEnableExnref(
     "wasm-enable-exnref", cl::desc("WebAssembly exception handling (exnref)"),
-    cl::init(false));
+    cl::init(true));
 
 static MCAsmInfo *createMCAsmInfo(const MCRegisterInfo & /*MRI*/,
                                   const Triple &TT,
