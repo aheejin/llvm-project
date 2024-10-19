@@ -2007,22 +2007,22 @@ void WebAssemblyCFGStackify::placeMarkers(MachineFunction &MF) {
       placeBlockMarker(MBB);
     }
   }
-  errs() << "-- after markers\n";
-  MF.dump();
+  //errs() << "-- after markers\n";
+  //MF.dump();
 
   // Fix mismatches in unwind destinations induced by linearizing the code.
   if (MCAI->getExceptionHandlingType() == ExceptionHandling::Wasm &&
       MF.getFunction().hasPersonalityFn()) {
     bool MismatchFixed = fixCallUnwindMismatches(MF);
-    errs() << "-- after fixCallUnwindMismatches\n";
-    MF.dump();
+    //errs() << "-- after fixCallUnwindMismatches\n";
+    //MF.dump();
     MismatchFixed |= fixCatchUnwindMismatches(MF);
-    errs() << "-- after fixCatchUnwindMismatches\n";
-    MF.dump();
+    //errs() << "-- after fixCatchUnwindMismatches\n";
+    //MF.dump();
     if (MismatchFixed)
       recalculateScopeTops(MF);
-    errs() << "-- after renumbering\n";
-    MF.dump();
+    //errs() << "-- after renumbering\n";
+    //MF.dump();
   }
 }
 
@@ -2115,8 +2115,8 @@ void WebAssemblyCFGStackify::rewriteDepthImmediates(MachineFunction &MF) {
   // Now rewrite references to basic blocks to be depth immediates.
   SmallVector<EndMarkerInfo, 8> Stack;
   SmallVector<const MachineBasicBlock *, 8> EHPadStack;
-  errs() << "\n-- rewriteDepthImmediates\n";
-  MF.dump();
+  //errs() << "\n-- rewriteDepthImmediates\n";
+  //MF.dump();
 
   auto RewriteOperands = [&](MachineInstr &MI) {
     // Rewrite MBB operands to be depth immediates.
