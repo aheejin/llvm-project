@@ -882,6 +882,20 @@ void WebAssemblyCFGStackify::placeTryTableMarker(MachineBasicBlock &MBB) {
     break;
   }
 
+  // comment
+  for (auto &MI : reverse(MBB)) {
+    if (MI.getOpcode() == WebAssembly::END_LOOP &&
+        EndToBegin[&MI]->getParent()->getNumber() >= Header->getNumber()) {
+      auto *EndLoopBB = MF.CreateMachineBasicBlock();
+      MF.insert(MBB.getIterator(), EndLoopBB);
+      auto SplitPos = std::next(MI.getIterator());
+      EndLoopBB->splice(EndLoopBB->end(), &MBB, MBB.begin(), SplitPos);
+      EndLoopBB->addSuccessor(&MBB);
+      updateScopeTops(EndToBegin[&MI]->getParent(), EndLoopBB);
+      break;
+    }
+  }
+
   // Decide where in MBB to put the END_TRY_TABLE, and the END_BLOCK for the
   // CATCH destination.
   BeforeSet.clear();
@@ -893,18 +907,16 @@ void WebAssemblyCFGStackify::placeTryTableMarker(MachineBasicBlock &MBB) {
       AfterSet.insert(&MI);
 #endif
 
+#ifndef NDEBUG
+    // TODO fix comment. before doesn't exist anymore
     // If there is a previously placed END_LOOP marker and the header of the
     // loop is above this try_table's header, the END_LOOP should be placed
     // after the END_TRY_TABLE, because the loop contains this block. Otherwise
     // the END_LOOP should be placed before the END_TRY_TABLE.
-    if (MI.getOpcode() == WebAssembly::END_LOOP) {
-      if (EndToBegin[&MI]->getParent()->getNumber() >= Header->getNumber())
-        BeforeSet.insert(&MI);
-#ifndef NDEBUG
-      else
-        AfterSet.insert(&MI);
+    if (MI.getOpcode() == WebAssembly::END_LOOP &&
+        EndToBegin[&MI]->getParent()->getNumber() < Header->getNumber())
+      AfterSet.insert(&MI);
 #endif
-    }
 
 #ifndef NDEBUG
     // CATCH, CATCH_REF, CATCH_ALL, and CATCH_ALL_REF are pseudo-instructions
@@ -1158,23 +1170,24 @@ void WebAssemblyCFGStackify::addNestedTryDelegate(
   } else {
     // When the split pos is in the middle of a BB, we split the BB into two and
     // put the 'delegate' BB in between. We normally create a split BB and make
-    // it a successor of the original BB (PostSplit == true), but in case the BB
-    // is an EH pad and the split pos is before 'catch', we should preserve the
-    // BB's property, including that it is an EH pad, in the later part of the
-    // BB, where 'catch' is. In this case we set PostSplit to false.
-    bool PostSplit = true;
+    // it a successor of the original BB (CatchAfterSplit == false), but in case
+    // the BB is an EH pad and the split pos is before 'catch', we should
+    // preserve the BB's property, including that it is an EH pad, in the later
+    // part of the BB, where 'catch' is. In this case we set CatchAfterSplit to
+    // true.
+    bool CatchAfterSplit = false;
     if (EndBB->isEHPad()) {
       for (auto I = MachineBasicBlock::iterator(SplitPos), E = EndBB->end();
            I != E; ++I) {
         if (WebAssembly::isCatch(I->getOpcode())) {
-          PostSplit = false;
+          CatchAfterSplit = true;
           break;
         }
       }
     }
 
     MachineBasicBlock *PreBB = nullptr, *PostBB = nullptr;
-    if (PostSplit) {
+    if (!CatchAfterSplit) { // TODO swap order
       // If the range's end instruction is in the middle of the BB, we split the
       // BB into two and insert the delegate BB in between.
       // - Before:
@@ -1333,19 +1346,19 @@ void WebAssemblyCFGStackify::addNestedTryTable(MachineInstr *RangeBegin,
     EndBB->addSuccessor(EndTryTableBB);
 
   } else {
-    bool PostSplit = true;
+    bool CatchAfterSplit = false;
     if (EndBB->isEHPad()) {
       for (auto I = MachineBasicBlock::iterator(SplitPos), E = EndBB->end();
            I != E; ++I) {
         if (WebAssembly::isCatch(I->getOpcode())) {
-          PostSplit = false;
+          CatchAfterSplit = true;
           break;
         }
       }
     }
 
     MachineBasicBlock *PreBB = nullptr, *PostBB = nullptr;
-    if (PostSplit) {
+    if (!CatchAfterSplit) {
       PreBB = EndBB;
       PostBB = MF.CreateMachineBasicBlock();
       MF.insert(std::next(PreBB->getIterator()), PostBB);
@@ -1994,22 +2007,22 @@ void WebAssemblyCFGStackify::placeMarkers(MachineFunction &MF) {
       placeBlockMarker(MBB);
     }
   }
-  //errs() << "-- after markers\n";
-  //MF.dump();
+  errs() << "-- after markers\n";
+  MF.dump();
 
   // Fix mismatches in unwind destinations induced by linearizing the code.
   if (MCAI->getExceptionHandlingType() == ExceptionHandling::Wasm &&
       MF.getFunction().hasPersonalityFn()) {
     bool MismatchFixed = fixCallUnwindMismatches(MF);
-    //errs() << "-- after fixCallUnwindMismatches\n";
-    //MF.dump();
+    errs() << "-- after fixCallUnwindMismatches\n";
+    MF.dump();
     MismatchFixed |= fixCatchUnwindMismatches(MF);
-    //errs() << "-- after fixCatchUnwindMismatches\n";
-    //MF.dump();
+    errs() << "-- after fixCatchUnwindMismatches\n";
+    MF.dump();
     if (MismatchFixed)
       recalculateScopeTops(MF);
-    //errs() << "-- after renumbering\n";
-    //MF.dump();
+    errs() << "-- after renumbering\n";
+    MF.dump();
   }
 }
 
@@ -2102,6 +2115,8 @@ void WebAssemblyCFGStackify::rewriteDepthImmediates(MachineFunction &MF) {
   // Now rewrite references to basic blocks to be depth immediates.
   SmallVector<EndMarkerInfo, 8> Stack;
   SmallVector<const MachineBasicBlock *, 8> EHPadStack;
+  errs() << "\n-- rewriteDepthImmediates\n";
+  MF.dump();
 
   auto RewriteOperands = [&](MachineInstr &MI) {
     // Rewrite MBB operands to be depth immediates.
