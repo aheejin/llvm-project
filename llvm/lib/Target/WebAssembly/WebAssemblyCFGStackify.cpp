@@ -942,6 +942,9 @@ void WebAssemblyCFGStackify::placeTryTableMarker(MachineBasicBlock &MBB) {
 }
 
 void WebAssemblyCFGStackify::removeUnnecessaryInstrs(MachineFunction &MF) {
+  if (WebAssembly::WasmEnableExnref)
+    return;
+
   const auto &TII = *MF.getSubtarget<WebAssemblySubtarget>().getInstrInfo();
 
   // When there is an unconditional branch right before a catch instruction and
@@ -1710,10 +1713,10 @@ bool WebAssemblyCFGStackify::fixCatchUnwindMismatches(MachineFunction &MF) {
   // throws a foreign exception that is not caught by ehpad A, and its next
   // destination should be the caller. But after control flow linearization,
   // another EH pad can be placed in between (e.g. ehpad B here), making the
-  // next unwind destination incorrect. In this case, the  foreign exception
-  // will instead go to ehpad B and will be caught there instead. In this
-  // example the correct next unwind destination is the caller, but it can be
-  // another outer catch in other cases.
+  // next unwind destination incorrect. In this case, the foreign exception will
+  // instead go to ehpad B and will be caught there instead. In this example the
+  // correct next unwind destination is the caller, but it can be another outer
+  // catch in other cases.
   //
   // There is no specific 'call' or 'throw' instruction to wrap with a
   // try-delegate, so we wrap the whole try-catch-end with a try-delegate and
@@ -2007,22 +2010,22 @@ void WebAssemblyCFGStackify::placeMarkers(MachineFunction &MF) {
       placeBlockMarker(MBB);
     }
   }
-  //errs() << "-- after markers\n";
-  //MF.dump();
+  errs() << "-- after markers\n";
+  MF.dump();
 
   // Fix mismatches in unwind destinations induced by linearizing the code.
   if (MCAI->getExceptionHandlingType() == ExceptionHandling::Wasm &&
       MF.getFunction().hasPersonalityFn()) {
     bool MismatchFixed = fixCallUnwindMismatches(MF);
-    //errs() << "-- after fixCallUnwindMismatches\n";
-    //MF.dump();
+    errs() << "-- after fixCallUnwindMismatches\n";
+    MF.dump();
     MismatchFixed |= fixCatchUnwindMismatches(MF);
-    //errs() << "-- after fixCatchUnwindMismatches\n";
-    //MF.dump();
+    errs() << "-- after fixCatchUnwindMismatches\n";
+    MF.dump();
     if (MismatchFixed)
       recalculateScopeTops(MF);
-    //errs() << "-- after renumbering\n";
-    //MF.dump();
+    errs() << "-- after renumbering\n";
+    MF.dump();
   }
 }
 
@@ -2115,8 +2118,8 @@ void WebAssemblyCFGStackify::rewriteDepthImmediates(MachineFunction &MF) {
   // Now rewrite references to basic blocks to be depth immediates.
   SmallVector<EndMarkerInfo, 8> Stack;
   SmallVector<const MachineBasicBlock *, 8> EHPadStack;
-  //errs() << "\n-- rewriteDepthImmediates\n";
-  //MF.dump();
+  errs() << "\n-- rewriteDepthImmediates\n";
+  MF.dump();
 
   auto RewriteOperands = [&](MachineInstr &MI) {
     // Rewrite MBB operands to be depth immediates.
